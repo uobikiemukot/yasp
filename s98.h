@@ -1,25 +1,43 @@
 /* See LICENSE for licence details. */
 /*
-	S98 file format:
+	S98V1 file format:
+
+	[HEADER FORMAT]
+
+	0000 3BYTE  MAGIC 'S98'
+	0003 1BYTE  FORMAT VERSION '1''
+	0004 4BYTE(LE)  TIMER INFO  sync numerator. If value is 0, default time is 10.
+	0008 4BYTE(LE)  TIMER INFO2 reserved (always 0)
+	000C 4BYTE(LE)  COMPRESSING not used?
+	0010 4BYTE(LE)  FILE OFFSET TO TAG If value is 0, no title exist. TAG string ends by '0x00'
+	0014 4BYTE(LE)  FILE OFFSET TO DUMP DATA
+	0018 4BYTE(LE)  FILE OFFSET TO LOOP POINT DUMP DATA
+
+	no device info?
+
+	S98V2 file format:
+		<no information>
+
+	S98V3 file format:
 
 	[HEADER FORMAT]
 
 	0000 3BYTE  MAGIC 'S98'
 	0003 1BYTE  FORMAT VERSION '3''
-	0004 DWORD(LE)  TIMER INFO  sync numerator. If value is 0, default time is 10.
-	0008 DWORD(LE)  TIMER INFO2 sync denominator. If value is 0, default time is 1000.
-	000C DWORD(LE)  COMPRESSING The value is 0 always.
-	0010 DWORD(LE)  FILE OFFSET TO TAG If value is 0, no title exist.
-	0014 DWORD(LE)  FILE OFFSET TO DUMP DATA
-	0018 DWORD(LE)  FILE OFFSET TO LOOP POINT DUMP DATA
-	001C DWORD(LE)  DEVICE COUNT    If value is 0, default type is OPNA, clock is 7987200Hz
-	0020 DWORD(LE)  DEVICE INFO * count
+	0004 4BYTE(LE)  TIMER INFO  sync numerator. If value is 0, default time is 10.
+	0008 4BYTE(LE)  TIMER INFO2 sync denominator. If value is 0, default time is 1000.
+	000C 4BYTE(LE)  COMPRESSING The value is 0 always.
+	0010 4BYTE(LE)  FILE OFFSET TO TAG If value is 0, no title exist. TAG string include multiple line (separated with LF '0x0A') and ends by '0x00'
+	0014 4BYTE(LE)  FILE OFFSET TO DUMP DATA
+	0018 4BYTE(LE)  FILE OFFSET TO LOOP POINT DUMP DATA
+	001C 4BYTE(LE)  DEVICE COUNT    If value is 0, default type is OPNA, clock is 7987200Hz
+	0020 4BYTE(LE)  DEVICE INFO * count
 
 	[DEVICE INFO]
 
-	0000 DWORD(LE)  DEVICE TYPE
-	0004 DWORD(LE)  CLOCK(Hz)
-	0008 DWORD(LE)  PAN
+	0000 4BYTE(LE)  DEVICE TYPE
+	0004 4BYTE(LE)  CLOCK(Hz)
+	0008 4BYTE(LE)  PAN
 	000C-000F RESERVE
 */
 
@@ -27,7 +45,9 @@ enum s98_misc_t {
 	BITS_PER_BYTE    = 8,
 	S98_TAGSIZE      = 128,
 	S98_MAX_DEVICE   = 64,
-	S98_DEFAULT_SYNC = 1000, /* 1 / S98_DEFAULT_SYNC == 1 sync time (usec) */
+	/* S98_DEFAULT_NUMERATOR / S98_DEFAULT_DENOMINATOR == 1 step (sec) */
+	S98_DEFAULT_NUMERATOR   = 10,
+	S98_DEFAULT_DENOMINATOR = 1000,
 };
 
 enum device_type_t {
@@ -80,11 +100,40 @@ int read_4byte_le(FILE *fp, uint32_t *value)
 	return count;
 }
 
+bool read_tag_string(FILE *fp, char tag[S98_TAGSIZE], int size)
+{
+	char *cp;
+
+	cp = tag;
+
+	while (1) {
+		*cp = getc(fp);
+
+		if (cp - tag > size) {
+			logging(ERROR, "tag buffer overflow\n");
+			return false;
+		}
+
+		if (*cp == 0x0A || *cp == 0x00) {
+			if (*cp == 0x0A)
+				*cp = '\0';
+
+			if (cp - tag > 0)
+				return true;
+			else /* string length == 0, no more tag */
+				return false;
+		}
+
+		cp++;
+	}
+}
+
 bool s98_header(FILE *fp, struct s98_header_t *header)
 {
 	uint8_t buf[BUFSIZE];
 	char tag[S98_TAGSIZE];
 
+	/* read common header */
 	if (fread(buf, 1, 4, fp) != 4
 		|| strncmp((char *) buf, "S98", 3)   != 0) {
 		logging(ERROR, "magic number miss match: %c %c %c %c\n",
@@ -118,14 +167,15 @@ bool s98_header(FILE *fp, struct s98_header_t *header)
 		header->compressing, header->offset_tag, header->offset_dump,
 		header->offset_loop, header->device_count);
 
-	if (header->device_count > 0) {
+	/* read device info */
+	if (header->version == 3 && header->device_count > 0) {
 		for (unsigned int i = 0; i < header->device_count; i++) {
 			if (read_4byte_le(fp, &header->device[i].type)     != 4
 				|| read_4byte_le(fp, &header->device[i].clock) != 4
 				|| read_4byte_le(fp, &header->device[i].pan)   != 4)
 				continue;
 		}
-	} else {
+	} else { /* header->version == 1 or header->device_count == 0 */
 		/* default device info:
 		 *
 	 	 * device type: OPNA
@@ -149,15 +199,17 @@ bool s98_header(FILE *fp, struct s98_header_t *header)
 			header->device[i].pan);
 	}
 
-	if (header->version == 3 && header->offset_tag != 0) {
-		fseek(fp, header->offset_tag, SEEK_SET);
+	/* read tag */
+	if (header->offset_tag != 0) {
 		logging(DEBUG, "tag:\n");
-		while (fgets(tag, S98_TAGSIZE, fp) != NULL) {
-			if (tag[0] != '\0')
-				logging(DEBUG, "%s", tag);
-		}
+
+		fseek(fp, header->offset_tag, SEEK_SET);
+
+		while (read_tag_string(fp, tag, S98_TAGSIZE))
+			logging(DEBUG, "%s\n", tag);
 	}
 
+	/* seek to data dump offset */
 	fseek(fp, header->offset_dump, SEEK_SET);
 
 	return true;
@@ -198,7 +250,8 @@ void sync_wait(double step, long nsync)
 	FE vv     nSYNC
 	FD        END/LOOP
 
-	1 SYNC = TIMER INFO / TIMER INFO2 (sec)
+	S98V1: 1 SYNC = TIMER INFO / 1000 (sec)
+	S98V3: 1 SYNC = TIMER INFO / TIMER INFO2 (sec)
 
 	DEVICE1, DEVICE2, ...: according to the order of DEVICE INFO
 
@@ -223,11 +276,14 @@ bool s98_parse(int fd, FILE *fp)
 
 	if (header.numerator != 0 && header.denominator != 0)
 		step = (double) header.numerator / header.denominator;
+	else if (header.numerator != 0)
+		step = (double) header.numerator / S98_DEFAULT_DENOMINATOR;
 	else
-		step = (double) 1.0 / S98_DEFAULT_SYNC;
+		step = (double) S98_DEFAULT_NUMERATOR / S98_DEFAULT_DENOMINATOR;
+
+	logging(DEBUG, "1 step: %lf (sec)\n", step);
 
 	while (catch_sigint == false) {
-
 		if (fread(buf, 1, 1, fp) != 1) {
 			logging(ERROR, "couldn't read op of s98 dump\n");
 			return false;

@@ -1,7 +1,7 @@
 /* See LICENSE for licence details. */
 
 enum spfm_misc_t {
-	SPFM_SEND_DELAY = 100, /* usec */
+	//SPFM_SEND_DELAY = 100, /* usec */
 	OPNA_FM_DATA_WRITE_WAIT0     = 83,
 	OPNA_FM_DATA_WRITE_WAIT1     = 47,
 	OPNA_RHYTHM_DATA_WRITE_WAIT0 = 576,
@@ -165,9 +165,13 @@ void send_data(int fd, uint8_t *buf, int size)
 	while (check_fds(fd, CHECK_WRITE_FD) != FD_IS_WRITABLE);
 
 	wsize = ewrite(fd, buf, size);
-	logging(DEBUG, "%ld byte(s) wrote\n", wsize);
 
-	//usleep(SPFM_SEND_DELAY);
+	if (LOG_LEVEL == DEBUG) {
+		logging(DEBUG, "%ld byte(s) wrote\t", wsize);
+		for (int i = 0; i < wsize; i++)
+			fprintf(stderr, "0x%.2X ", buf[i]);
+		fprintf(stderr, "\n");
+	}
 }
 
 void recv_data(int fd, uint8_t *buf, int size)
@@ -177,9 +181,12 @@ void recv_data(int fd, uint8_t *buf, int size)
 	while (check_fds(fd, CHECK_READ_FD) != FD_IS_READABLE);
 
 	rsize = eread(fd, buf, size);
-	if (0 < rsize && rsize < size) {
-		buf[rsize] = '\0';
-		logging(DEBUG, "rsize:%ld buf:%s\n", rsize, buf);
+
+	if (LOG_LEVEL == DEBUG) {
+		logging(DEBUG, "%ld byte(s) read\t", rsize);
+		for (int i = 0; i < rsize; i++)
+			fprintf(stderr, "0x%.2X ('%c') ", buf[i], buf[i]);
+		fprintf(stderr, "\n");
 	}
 }
 
