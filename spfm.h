@@ -1,15 +1,5 @@
 /* See LICENSE for licence details. */
 
-enum spfm_misc_t {
-	//SPFM_SEND_DELAY = 100, /* usec */
-	OPNA_FM_DATA_WRITE_WAIT0     = 83,
-	OPNA_FM_DATA_WRITE_WAIT1     = 47,
-	OPNA_RHYTHM_DATA_WRITE_WAIT0 = 576,
-	OPNA_RHYTHM_DATA_WRITE_WAIT1 = 83,
-	OPNA_FM_ADDR_WRITE_WAIT      = 17,
-	OPNA_RHYTHM_ADDR_WRITE_WAIT  = 17,
-};
-
 enum fd_state_t {
 	FD_IS_BUSY     = -1,
 	FD_IS_READABLE = 0,
@@ -48,11 +38,6 @@ int serial_init(struct termios *old_termio)
 	cur_termio.c_oflag = 0;
 	cur_termio.c_lflag = 0;
 	cur_termio.c_cflag = CS8;
-
-	//cur_termio.c_cflag &= ~CSIZE;
-	//cur_termio.c_cflag |= (CS8 | CREAD | CLOCAL);
-	//cur_termio.c_cflag &= ~CRTSCTS;
-	//cur_termio.c_lflag &= ~(ECHO | ISIG | ICANON);
 
 	cur_termio.c_cc[VMIN]  = 1;
 	cur_termio.c_cc[VTIME] = 0;
@@ -209,51 +194,6 @@ bool spfm_reset(int fd)
 	return true;
 }
 
-void addr_write_wait(int device, uint8_t addr)
-{
-	(void) device;
-	(void) addr;
-
-	/*
-	if (0x10 <= addr && addr <= 0x1D)
-		usleep((double) OPNA_FM_ADDR_WRITE_WAIT / 8000000 * 1000000);
-	else if (0x21 <= addr && addr <= 0xB6)
-		usleep((double) OPNA_RHYTHM_ADDR_WRITE_WAIT / 8000000 * 1000000);
-	else
-		usleep(0);
-	*/
-	usleep(2.1);
-}
-
-void data_write_wait(int device, uint8_t addr)
-{
-	/*
-	if (0x21 <= addr && addr <= 0x9E)
-		usleep((double) OPNA_FM_DATA_WRITE_WAIT0 / 8000000 * 1000000);
-	else if (0xA0 <= addr && addr <= 0xB6)
-		usleep((double) OPNA_FM_DATA_WRITE_WAIT1 / 8000000 * 1000000);
-	else if (device == 0x00 && addr == 0x10)
-		usleep((double) OPNA_RHYTHM_DATA_WRITE_WAIT0 / 8000000 * 1000000);
-	else if (device == 0x00 && (0x11 <= addr && addr <= 0x1D))
-		usleep((double) OPNA_RHYTHM_DATA_WRITE_WAIT1 / 8000000 * 1000000);
-	else
-		usleep(0);
-	*/
-
-	(void) device;
-
-	if (addr <= 0x0F)
-		usleep(2.1);
-	else if (addr == 0x10)
-		usleep(72.0);
-	else if (0x11 <= addr && addr <= 0x1D)
-		usleep(19.4);
-	else if (0x21 <= addr && addr <= 0x9E)
-		usleep(19.4);
-	else if (0xA0 <= addr && addr <= 0xB6)
-		usleep(5.9);
-}
-
 void spfm_send(int fd, uint8_t device, uint8_t addr, uint8_t data)
 {
 	send_data(fd, &(uint8_t){OPNA_SLOT_NUM}, 1);
@@ -265,11 +205,7 @@ void spfm_send(int fd, uint8_t device, uint8_t addr, uint8_t data)
 
 	send_data(fd, &addr, 1);
 
-	//addr_write_wait(device, addr);
-
 	send_data(fd, &data, 1);
-
-	//data_write_wait(device, addr);
 
 	if (device == 0x00) {
 		if (addr <= 0x0F)
