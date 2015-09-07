@@ -1,5 +1,4 @@
 /* See LICENSE for licence details. */
-
 enum fd_state_t {
 	FD_IS_BUSY     = -1,
 	FD_IS_READABLE = 0,
@@ -151,12 +150,14 @@ void send_data(int fd, uint8_t *buf, int size)
 
 	wsize = ewrite(fd, buf, size);
 
+	/*
 	if (LOG_LEVEL == DEBUG) {
 		logging(DEBUG, "%ld byte(s) wrote\t", wsize);
 		for (int i = 0; i < wsize; i++)
 			fprintf(stderr, "0x%.2X ", buf[i]);
 		fprintf(stderr, "\n");
 	}
+	*/
 }
 
 void recv_data(int fd, uint8_t *buf, int size)
@@ -167,12 +168,14 @@ void recv_data(int fd, uint8_t *buf, int size)
 
 	rsize = eread(fd, buf, size);
 
+	/*
 	if (LOG_LEVEL == DEBUG) {
 		logging(DEBUG, "%ld byte(s) read\t", rsize);
 		for (int i = 0; i < rsize; i++)
 			fprintf(stderr, "0x%.2X ('%c') ", buf[i], buf[i]);
 		fprintf(stderr, "\n");
 	}
+	*/
 }
 
 bool spfm_reset(int fd)
@@ -194,20 +197,9 @@ bool spfm_reset(int fd)
 	return true;
 }
 
-void spfm_send(int fd, uint8_t device, uint8_t addr, uint8_t data)
+void OPNA_register_info(uint8_t port, uint8_t addr)
 {
-	send_data(fd, &(uint8_t){OPNA_SLOT_NUM}, 1);
-
-	if (device == 0x00)
-		send_data(fd, &(uint8_t){0x00}, 1);
-	else /* OPNA extend: A1 bit on */
-		send_data(fd, &(uint8_t){0x02}, 1);
-
-	send_data(fd, &addr, 1);
-
-	send_data(fd, &data, 1);
-
-	if (device == 0x00) {
+	if (port == 0x00) {
 		if (addr <= 0x0F)
 			logging(DEBUG, "SSG:\n");
 		else if (0x10 <= addr && addr <= 0x1F)
@@ -226,7 +218,21 @@ void spfm_send(int fd, uint8_t device, uint8_t addr, uint8_t data)
 		else
 			logging(DEBUG, "unknown:\n");
 	}
+}
 
-	logging(DEBUG, "device:0x%.2X addr:0x%.2X data:0x%.2X\n",
-		device, addr, data);
+void spfm_send(int fd, uint8_t slot, uint8_t port, uint8_t addr, uint8_t data)
+{
+	send_data(fd, &slot, 1);
+
+	if (port == 0x00)
+		send_data(fd, &(uint8_t){0x00}, 1);
+	else /* OPNA extend: A1 bit on */
+		send_data(fd, &(uint8_t){0x02}, 1);
+
+	send_data(fd, &addr, 1);
+
+	send_data(fd, &data, 1);
+
+	logging(DEBUG, "slot:0x%.2X port:0x%.2X addr:0x%.2X data:0x%.2X\n",
+		slot, port, addr, data);
 }

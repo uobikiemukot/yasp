@@ -11,14 +11,16 @@
 #include <string.h>
 #include <sys/select.h>
 #include <sys/stat.h>
-//#include <sys/mman.h>
 #include <termios.h>
 #include <unistd.h>
 
 enum misc_t {
+	BITS_PER_BYTE  = 8,
 	BUFSIZE        = 16,
 	SELECT_TIMEOUT = 15000, /* usec */
-	OPNA_SLOT_NUM  = 0x01, /* slot0: 0x00, slot1: 0x01 */
+	/* SPFM Light slot: 0x00 or 0x01 */
+	OPM_SLOT_NUM   = 0x00,
+	OPNA_SLOT_NUM  = 0x01,
 };
 
 static const char *serial_dev      = "/dev/ttyUSB0";
