@@ -1,6 +1,6 @@
 # yasp (Yet Another SPFM Light Player)
 
-Last update: Mon Jul 27 10:36:02 JST 2015
+Last update: Mon Sep  7 22:04:19 JST 2015
 
 ## description
 
