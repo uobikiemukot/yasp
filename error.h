@@ -59,6 +59,17 @@ int eclose(int fd)
 	return ret;
 }
 
+int efseek(FILE *stream, long offset, int whence)
+{
+	int ret;
+	errno = 0;
+
+	if ((ret = fseek(stream, offset, whence)) < 0)
+		logging(ERROR, "fseek: %s\n", strerror(errno));
+
+	return ret;
+}
+
 FILE *efopen(const char *path, char *mode)
 {
 	FILE *fp;
@@ -139,6 +150,17 @@ int eselect(int maxfd, fd_set *readfds, fd_set *writefds, fd_set *errorfds, stru
 		else
 			logging(ERROR, "select: %s\n", strerror(errno));
 	}
+	return ret;
+}
+
+size_t efread(void *ptr, size_t size, size_t nmemb, FILE *stream)
+{
+	size_t ret;
+	errno = 0;
+
+	if ((ret = fread(ptr, size, nmemb, stream)) != nmemb)
+		logging(ERROR, "fread: nmemb (%d) != ret (%d)\n%s\n", nmemb, ret, strerror(errno));
+
 	return ret;
 }
 
