@@ -56,26 +56,33 @@ uint64_t read_variable_length_7bit_le(FILE *fp)
 
 bool read_string(FILE *fp, char *str, int size)
 {
+	int c;
 	char *cp;
 
 	cp = str;
 
 	while (1) {
-		*cp = getc(fp);
+		if ((c = getc(fp)) == EOF)
+			return false;
 
-		if (cp - str > size) {
+		if (cp - str >= size) {
 			logging(ERROR, "str buffer overflow\n");
 			return false;
 		}
+
+		*cp = c;
 
 		if (*cp == 0x0A || *cp == 0x00) {
 			if (*cp == 0x0A)
 				*cp = '\0';
 
-			if (cp - str > 0)
-				return true;
-			else /* string length == 0, no more str */
+			if (cp - str == 0) {
+				logging(WARN, "string length is 0\n");
 				return false;
+			} else {
+				/* maybe there is one more tag */
+				return true;
+			}
 		}
 
 		cp++;
