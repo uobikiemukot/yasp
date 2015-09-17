@@ -105,18 +105,21 @@ bool vgm_parse_header(FILE *fp, struct vgm_header_t *header)
 	}
 
 	logging(DEBUG, "magic: '%c' '%c' '%c' '%c'\n"
-		"\tversion:%u EOF offest:%u GD3_offset:%u\n"
-		"\ttotal samples:%u loop offset:%u loop samples:%u\n"
-		"\tsample rate:%u VGM_data_offset:%u\n",
+		"\tversion:0x%.4X EOF offest:0x%.8X GD3_offset:0x%.8X\n"
+		"\ttotal samples:%u loop offset:0x%.8X loop samples:%u\n"
+		"\tsample rate:%u VGM_data_offset:0x%.5X\n",
 		header->magic[0], header->magic[1], header->magic[2], header->magic[3],
 		header->version, header->EOF_offset, header->GD3_offset,
 		header->total_samples, header->loop_offset, header->loop_samples,
 		header->sample_rate, header->VGM_data_offset);
 
+	if (header->version < 0x151) /* YM2608 chip is supported from version 1.51 or later */
+		header->YM2608_clock = 0;
+
 	logging(DEBUG, "YM2151 clock:%u YM2608 clock:%u\n", header->YM2151_clock, header->YM2608_clock);
 
 	if (header->YM2151_clock == 0 && header->YM2608_clock == 0) {
-		logging(ERROR, "only support YM2151 and YM2608 chips\n");
+		logging(ERROR, "only support YM2151 and YM2608 chip\n");
 		return false;
 	}
 
@@ -194,7 +197,7 @@ void vgm_wait(int nsync)
 		slot:0x01 port:0x01 addr:0x00 data:0x01
 */
 
-bool opna_pcm_write(int serial_fd, FILE *input_fp, uint8_t type, uint32_t size)
+bool opna_adpcm_write(int serial_fd, FILE *input_fp, uint8_t type, uint32_t size)
 {
 	int count, adpcm_size = size - 8; /* size - sizeof(rom_size) (4byte) -  sizeof(start_addr) (4byte) */
 	uint32_t rom_size, start_addr, stop_addr;
@@ -205,7 +208,7 @@ bool opna_pcm_write(int serial_fd, FILE *input_fp, uint8_t type, uint32_t size)
 	if (efread(&rom_size, 1, 4, input_fp) != 4
 		|| efread(&start_addr, 1, 4, input_fp) != 4)
 		return false;
-	logging(DEBUG, "rom size:%lu start addr:%lu\n", rom_size, start_addr);
+	logging(DEBUG, "rom size:%lu start addr:0x%.8X adpcm size:%d\n", rom_size, start_addr, adpcm_size);
 
 	if (efread(adpcm, 1, adpcm_size, input_fp) != (size_t) adpcm_size)
 		return false;
@@ -221,6 +224,7 @@ bool opna_pcm_write(int serial_fd, FILE *input_fp, uint8_t type, uint32_t size)
 	//fwrite(adpcm, 1, adpcm_size, stdout);
 
 	/* sequence from YM2608 application manual */
+	//memcpy(adpcm.src + start_addr, adp, adpcm_size);
 	spfm_send(serial_fd, OPNA_SLOT_NUM, 0x01, 0x10, 0x13);
 	spfm_send(serial_fd, OPNA_SLOT_NUM, 0x01, 0x10, 0x80);
 	spfm_send(serial_fd, OPNA_SLOT_NUM, 0x01, 0x00, 0x60);
@@ -269,6 +273,8 @@ bool vgm_play(int serial_fd, FILE *input_fp)
 	vgm_wait1 = VGM_DEFAULT_WAIT1;
 	vgm_wait2 = VGM_DEFAULT_WAIT2;
 
+	//adpcm_rom_reset(serial_fd);
+
 	while (catch_sigint == false) {
 		if (efread(&op, 1, 1, input_fp) != 1)
 			return false;
@@ -285,27 +291,6 @@ bool vgm_play(int serial_fd, FILE *input_fp)
 		case 0x57: /* YM2608 extended */
 			if (efread(buf, 1, 2, input_fp) != 2)
 				return false;
-
-			/*
-			// ADPCM synth sample rate
-			// 9447 :  8kHz
-			// 12989: 11kHz
-			// 18893: 16kHz
-			// 25978: 22kHz
-			// 38967: 33kHz
-			// 51956: 44kHz
-			// 64946: 55KHz
-			if (op == 0x57 && buf[0] == 0x09)
-				buf[1] = low_byte(21188);
-			else if (op == 0x57 && buf[0] == 0x0A)
-				buf[1] = high_byte(21188);
-			*/
-			/*
-			// skip ADPCM synth start
-			if (op == 0x57 && buf[0] == 0x00 && buf[1] == 0xA0)
-				continue;
-			*/
-
 			if (op == 0x56)
 				spfm_send(serial_fd, OPNA_SLOT_NUM, 0x00, buf[0], buf[1]);
 			else if (op == 0x57)
@@ -342,9 +327,9 @@ bool vgm_play(int serial_fd, FILE *input_fp)
 				logging(ERROR, "invalid sequence: 0x67 0x%.2X (expected 0x67 0x66)\n", buf[0]);
 				return false;
 			}
-			opna_pcm_write(serial_fd, input_fp, buf[1], u32_tmp);
+			opna_adpcm_write(serial_fd, input_fp, buf[1], u32_tmp);
 			break;
-		default:
+		default: /* vgm 1-16 wait */
 			if (0x70 <= op && op <= 0x7F)
 				vgm_wait((op & 0x0F) + 1);
 			else
